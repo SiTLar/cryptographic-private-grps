@@ -43,7 +43,7 @@ var sqlOptions= require('./frfdb.js');
  function sendPosts(){
 	var connection = mysql.createConnection(sqlOptions);
 	connection.connect();
- 	if(urlReq.query.id) return connection.query("select * from `posts`  where `id` = ?;",urlReq.query.id, porcessQuery);
+ 	if(urlReq.query.id) return connection.query("select * from `posts`  where `id` = ?;",urlReq.query.id, porcessUnauthQuery);
  	else{
 		var offset = 0;
 		var limit = 10;
