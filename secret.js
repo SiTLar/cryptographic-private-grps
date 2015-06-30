@@ -3,13 +3,10 @@
  var openpgp = require('openpgp');
  var mysql = require('mysql');
  var http = require('http');
-var sqlOptions= {
-		socketPath : '/run/mysqld/mysqld.sock',
-		user     : 'frf',
-		password : 'i1938068021209644612320857643',
-		database : 'frf_private',
-		multipleStatements: true
-};
+ var https = require('https');
+ var url = require('url');
+
+var sqlOptions= require('./frfdb.js');
  module.exports = function(req,res, urlReq){
  var data = new Array();
  if (urlReq.pathname == '/cgi/secret/posts')req.on('end',sendPosts);
@@ -101,52 +98,48 @@ function porcessUnauthQuery (sqlerr,sqlres,fields, res){
 	});
  
  }
- function register(){
-	
-		http.get("http://twinspect.net:3000/v1/posts/"+Buffer.concat(data).toString('ascii')
-		,function(frfres) {
-			var frfdata = '';
-			frfres.on('data', function (chunk) {frfdata += chunk;});
-			frfres.on('end',function (){
-				if( frfres.statusCode >= 400 ){
-					res.writeHead(400);
-					res.end();
-					return;
-				} 
-				var incoming = JSON.parse(frfdata);
-				var connection = mysql.createConnection(sqlOptions);
-				 connection.connect();
-				 var cUsername = '';
-				 for (var idx =0; idx < incoming.users.length; idx++){
-					 if (incoming.users[idx].id == incoming.posts.createdBy){
-					 	cUsername = incoming.users[idx].username;
-						break;
-					}
-				 }
-				 if (cUsername == '') {
-					res.writeHead(400);
-					res.end();
-					return;
-				 }
+function register(){
 
-				var key = openpgp.key.readArmored(incoming.posts.body).keys[0];
-				 var write_token = new Buffer(openpgp.crypto.random.getRandomBytes(16)).toString('base64');
-				 var values = [cUsername,  incoming.posts.body, '', incoming.posts.createdBy, write_token ] ; 
-				 connection.query(
-				/* 'INSERT INTO `keys` (`username`,`public_key`, `secret_data`, `write_token`)'
-				+'VALUES ("'+key.getUserIds()[0] +'","'+ values+'" ) ON DUPLICATE KEY UPDATE'
-				+'(`public_key`, `secret_data`, `write_token`) VALUES("' + values
-				*/
-				"REPLACE INTO `keys` (`Username`,`pub_key`, `secret_data`, `userid`, `write_token`)"
-				+'VALUES (?, ?, ?, ?, ?);', values
-				,function (sqlerr,sqlres,fields){
-					sendEnc(  key, write_token );
-					connection.destroy();
-				});
+	https.get("https://nanopeppa.freefeed.net/v1/posts/"+Buffer.concat(data).toString('ascii')
+	,function(frfres) {
+		var frfdata = '';
+		frfres.on('data', function (chunk) {frfdata += chunk;});
+		frfres.on('end',function (){
+			if( frfres.statusCode >= 400 ){
+				res.writeHead(400);
+				res.end();
+				return;
+			} 
+			var incoming = JSON.parse(frfdata);
+			var connection = mysql.createConnection(sqlOptions);
+			 connection.connect();
+			 var cUsername = '';
+			 for (var idx =0; idx < incoming.users.length; idx++){
+				 if (incoming.users[idx].id == incoming.posts.createdBy){
+					cUsername = incoming.users[idx].username;
+					break;
+				}
+			 }
+			 if (cUsername == '') {
+				res.writeHead(400);
+				res.end();
+				return;
+			 }
+
+			var key = openpgp.key.readArmored(incoming.posts.body).keys[0];
+			 var write_token = new Buffer(openpgp.crypto.random.getRandomBytes(16)).toString('base64');
+			 var values = [cUsername,  incoming.posts.body, '', incoming.posts.createdBy, write_token ] ; 
+			 connection.query(
+			"REPLACE INTO `keys` (`Username`,`pub_key`, `secret_data`, `userid`, `write_token`)"
+			+'VALUES (?, ?, ?, ?, ?);', values
+			,function (sqlerr,sqlres,fields){
+				sendEnc(  key, write_token );
+				connection.destroy();
 			});
 		});
-		 
- }
+	});
+	 
+}
  function sendToken(){
 	 var username = req.headers['x-authentication-user'];
 	 var connection = mysql.createConnection(sqlOptions);
@@ -203,9 +196,8 @@ function porcessUnauthQuery (sqlerr,sqlres,fields, res){
 
  } 
  function post(){
-	 var username = req.headers['x-authentication-user'];
-	 var token = (new Buffer(req.headers["x-authentication-token"],'base64')).toString('hex');
-	 var type= req.headers['x-content-type'];
+	 var type = req.headers['x-content-type'];
+	 var token = req.headers['x-content-token']; 
 	 if (type == 'comment')type = 'comments';
 	 else if (type == 'post')type = 'posts';
 	 else {
@@ -213,130 +205,94 @@ function porcessUnauthQuery (sqlerr,sqlres,fields, res){
 		 res.end();
 	 }
 	 var connection = mysql.createConnection(sqlOptions);
-	 connection.connect();
-	 connection.query("select userid from `keys` where `Username` = ? and sha2(`write_token`,256) = ?;"
-	 , [username, token]
+ 	 connection.connect();
+ 	 connection.query("insert into ?? (`createdAt`, `body`, `token` ) values (NOW(), ?, ?); "
+ 	 +"SELECT `id`, `createdAt`, `body`, `updatedAt` from ??  where `id` = LAST_INSERT_ID();"
+ 	 , [type, Buffer.concat(data).toString('ascii'), token, type]
 	 ,function (sqlerr,sqlres,fields){
-		if (sqlerr) {
+		 if (sqlerr) {
 			res.writeHead(500);
 			console.log(sqlerr);
-		} else if(typeof sqlres === 'undefined')
-			res.writeHead(400);
-		else if(typeof sqlres[0] === 'undefined')
-			res.writeHead(400);
-		else {
-			connection.query("insert into ?? (`username`, `createdBy`,`createdAt`, `body` ) values (?, ?, NOW(), ?); "
-			+"SELECT * from ??  where `id` = LAST_INSERT_ID();"
-			, [type, username, sqlres[0].userid, Buffer.concat(data).toString('ascii'), type]
-			,function (sqlerr,sqlres,fields){
-			if (sqlerr) {
-				res.writeHead(500);
-				console.log(sqlerr);
-			} else if(typeof sqlres === 'undefined') res.writeHead(400);
-				else{
-					res.writeHead(200);
-					res.writeHead(200, { "Content-Type": "text/json" });
-					res.write(JSON.stringify({'posts':(sqlres[1])[0]}));
-				}
-				res.end();
-				connection.destroy();
-			});
-			return;
-		}
-		res.end();
-		connection.destroy();
-	});
-
+		 } else if(typeof sqlres === 'undefined') res.writeHead(400);
+		 else{
+			 res.writeHead(200);
+			 res.writeHead(200, { "Content-Type": "text/json" });
+			 res.write(JSON.stringify({'posts':(sqlres[1])[0]}));
+		 }
+		 res.end();
+		 connection.destroy();
+	 });
  } 
  function deleteP(){
 	 var username = req.headers['x-authentication-user'];
+	 var token = req.headers['x-access-token'];
 	 var postid = req.headers['x-content-id'];
-	 var token = (new Buffer(req.headers["x-authentication-token"],'base64')).toString('hex');
 	 var type= req.headers['x-content-type'];
 	 if (type == 'comment')type = 'comments';
 	 else if (type == 'post')type = 'posts';
 	 else {
 		 res.writeHead(400);
-		 res.end();
+		 res.end("wrong type");
+		 return;
+	 }
+	 if(!token || !postid){
+		 res.writeHead(400);
+		 res.end("parameters missing");
+		 return;
 	 }
 	 var connection = mysql.createConnection(sqlOptions);
 	 connection.connect();
-	 connection.query("select userid from `keys` where `Username` = ? and sha2(`write_token`,256) = ?;"
-	 , [username, token]
+	 connection.query("DELETE from ??  where `id` = ? and `token` = ?;"
+	 , [type, postid,token]
 	 ,function (sqlerr,sqlres,fields){
-		if (sqlerr) {
+		 if (sqlerr) {
 			res.writeHead(500);
 			console.log(sqlerr);
-		} else if(typeof sqlres === 'undefined')
-			res.writeHead(400);
-		else if(typeof sqlres[0] === 'undefined')
-			res.writeHead(400);
-		else {
-			connection.query("DELETE from ??  where `id` = ? and username = ?;"
-			, [type, postid,username]
-			,function (sqlerr,sqlres,fields){
-			if (sqlerr) {
-				res.writeHead(500);
-				console.log(sqlerr);
-			} else if(typeof sqlres === 'undefined') res.writeHead(400);
-				else if (!sqlres.affectedRows) res.writeHead(404);
-				else{
-					res.writeHead(204);
-				}
-				res.end();
-				connection.destroy();
-			});
-			return;
-		}
-		res.end();
-		connection.destroy();
-	});
+		 } else if(typeof sqlres === 'undefined') res.writeHead(400);
+		 else if (!sqlres.affectedRows) res.writeHead(400);
+		 else{
+			res.writeHead(204);
+		 }
+		 res.end();
+		 connection.destroy();
+	 });
 
  } 
  function editP(){
-	 var username = req.headers['x-authentication-user'];
 	 var type= req.headers['x-content-type'];
+	 var token = req.headers['x-access-token'];
+	 var newToken = req.headers['x-content-token']; 
+	 var id = req.headers['x-content-id']; 
 	 if (type == 'comment')type = 'comments';
 	 else if (type == 'post')type = 'posts';
 	 else {
 		 res.writeHead(400);
-		 res.end();
+		 res.end("wrong type");
+		 return;
 	 }
-	 var token = (new Buffer(req.headers["x-authentication-token"],'base64')).toString('hex');
+	 if(!token || !newToken || !id){
+		 res.writeHead(400);
+		 res.end("parameters missing");
+		 return;
+	 }
 	 var connection = mysql.createConnection(sqlOptions);
 	 connection.connect();
-	 connection.query("select userid from `keys` where `Username` = ? and sha2(`write_token`,256) = ?;"
-	 , [username, token]
+	 connection.query("UPDATE ?? set `body` = ?, `token` = ? where `id` = ? and `token` = ?;"
+	 +"SELECT `id`, `createdAt`, `body`, `updatedAt` from ?? where `id` = ?;"
+	 , [type, Buffer.concat(data).toString('ascii'), newToken, id, token, type, id ]
 	 ,function (sqlerr,sqlres,fields){
-		if (sqlerr) {
-			res.writeHead(500);
-			console.log(sqlerr);
-		} else if(typeof sqlres === 'undefined')
-			res.writeHead(400);
-		else if(typeof sqlres[0] === 'undefined')
-			res.writeHead(400);
-		else {
-			connection.query("UPDATE `posts` set `body` = ? where `id` = ? and username = ?;"
-			+"SELECT * from `posts`  where `id` = ?;"
-			, [Buffer.concat(data).toString('ascii'), req.headers['x-content-id'], username, req.headers['x-content-id'] ]
-			,function (sqlerr,sqlres,fields){
-				if (sqlerr) {
-					res.writeHead(500);
-					console.log(sqlerr);
-				} else if(typeof sqlres === 'undefined') res.writeHead(400);
-				else if (!sqlres[0].affectedRows) res.writeHead(404);
-				else{
-					res.writeHead(200);
-					res.write(JSON.stringify({'posts':(sqlres[1])[0]}));
-				}
-				res.end();
-				connection.destroy();
-			});
-			return;
-		}
-		res.end();
-		connection.destroy();
-	});
+	 	if (sqlerr) {
+	 		res.writeHead(500);
+	 		console.log(sqlerr);
+	 	} else if(typeof sqlres === 'undefined') res.writeHead(400);
+	 	else if (!sqlres[0].affectedRows) res.writeHead(404);
+	 	else{
+	 		res.writeHead(200);
+	 		res.write(JSON.stringify({'posts':(sqlres[1])[0]}));
+	 	}
+	 	res.end();
+	 	connection.destroy();
+	 });
 
  } 
  function sendUserPriv(){
