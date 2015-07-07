@@ -1,5 +1,6 @@
 var http = require('http');
 var secret = require('./secret_pg.js');
+var options = require('./frfpg.js');
 var server = http.createServer(
 		function(req, res) {
 			if(req){
@@ -12,8 +13,8 @@ var server = http.createServer(
 						break;
 					default:
 						res.statusCode = 500;
-						res.end("500 PHP not found "+ urlReq.pathname);
+						res.end("500 not found "+ urlReq.pathname);
 				}
 			}
-		}).listen(3030,'localhost');
+		}).listen(options.server_port,'localhost');
 server.on('error', function(e) { console.log("Got error: " + e.message);});
