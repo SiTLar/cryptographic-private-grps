@@ -19,7 +19,6 @@ CREATE TABLE `keys` (
   `pub_key` blob NOT NULL,
   `secret_data` blob NOT NULL,
   `write_token` varchar(1024) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  `userid` char(36) CHARACTER SET ascii NOT NULL,
   PRIMARY KEY (`Username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 

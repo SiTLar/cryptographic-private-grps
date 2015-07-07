@@ -43,7 +43,9 @@ var sqlOptions= require('./frfdb.js');
  function sendPosts(){
 	var connection = mysql.createConnection(sqlOptions);
 	connection.connect();
- 	if(urlReq.query.id) return connection.query("select * from `posts`  where `id` = ?;",urlReq.query.id, porcessUnauthQuery);
+ 	if(urlReq.query.id)
+		connection.query("select * from `posts`  where `id` = ?;",urlReq.query.id,
+		function(sqlerr,sqlres,fields){ porcessUnauthQuery(sqlerr,sqlres,fields) ; connection.destroy(); });
  	else{
 		var offset = 0;
 		var limit = 10;
@@ -62,7 +64,7 @@ var sqlOptions= require('./frfdb.js');
 	if(typeof urlReq.query.offset === 'number')offset = urlReq.query.offset;
 	if(typeof urlReq.query.limit === 'number')if(urlReq.query.limit<1000)limit = urlReq.query.limit;else limit = 1000;
 	connection.query("select * from `comments` order by `createdAt` desc limit ? offset ? ;",[limit, offset]
-		,function(sqlerr,sqlres,fields){ porcessUnauthQuery(sqlerr,sqlres,fields,res) ; connection.destroy(); });
+		,function(sqlerr,sqlres,fields){ porcessUnauthQuery(sqlerr,sqlres,fields) ; connection.destroy(); });
 	
  }
 function porcessUnauthQuery (sqlerr,sqlres,fields, res){
@@ -128,10 +130,10 @@ function register(){
 
 			var key = openpgp.key.readArmored(incoming.posts.body).keys[0];
 			 var write_token = new Buffer(openpgp.crypto.random.getRandomBytes(16)).toString('base64');
-			 var values = [cUsername,  incoming.posts.body, '', incoming.posts.createdBy, write_token ] ; 
+			 var values = [cUsername,  incoming.posts.body, '', write_token ] ; 
 			 connection.query(
-			"REPLACE INTO `keys` (`Username`,`pub_key`, `secret_data`, `userid`, `write_token`)"
-			+'VALUES (?, ?, ?, ?, ?);', values
+			"REPLACE INTO `keys` (`Username`,`pub_key`, `secret_data`, `write_token`)"
+			+'VALUES (?, ?, ?, ?);', values
 			,function (sqlerr,sqlres,fields){
 				sendEnc(  key, write_token );
 				connection.destroy();
