@@ -43,7 +43,7 @@ function register(){
 				if(oReqS.status < 400){ 
 					var msgEnc = openpgp.message.readArmored(oReqS.response);
 					var dkey = openpgp.key.readArmored(keyPrA);
-					openpgp.decryptMessage(dkey.keys[0],msgEnc);
+					openpgp.decryptMessage(dkey.keys[0],msgEnc)
 					.then(function(msg){
 						token = msg;
 						console.log("OK register "+msg);
@@ -106,8 +106,8 @@ function newPost(){
 	oReq.setRequestHeader("Content-type","text/plain");
 	oReq.setRequestHeader("x-content-token", ".;dlvn;dl"); 
 	oReq.onload = function(){
-		console.log(oReq);
 		if(oReq.status < 400){
+			var res = JSON.parse(oReq.response);
 			if(res.posts.body == testData )console.log("OK new post");
 			else console.log(res);
 		}else	console.log("New post %d: %s", oReq.status, oReq.statusText);
