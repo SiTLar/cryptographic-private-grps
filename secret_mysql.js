@@ -182,15 +182,18 @@ function register(){
 
  function update(){
 	 var username = req.headers['x-authentication-user'];
-	 var token = (new Buffer(req.headers["x-authentication-token"],'base64')).toString('hex');
+	 var token = req.headers["x-authentication-token"];
 	 var connection = mysql.createConnection(sqlOptions);
 	 connection.connect();
-	 connection.query("update `keys` set `secret_data`=? where `Username` = ? and sha2(`write_token`,256) = ?;"
+	 connection.query("update `keys` set `secret_data`=? where `Username` = ? and `write_token` = ?;"
 	 , [Buffer.concat(data).toString('ascii'), username, token]
 	 ,function (sqlerr,sqlres,fields){
 		if (sqlerr)  res.writeHead(500);
 		else if(typeof sqlres === 'undefined') res.writeHead(400);
-		else if (sqlres.affectedRows == 0 )res.writeHead(400);
+		else if (sqlres.affectedRows == 0 ){
+			res.writeHead(400);
+			console.log(sqlres);
+		}
 		else res.writeHead(204);
 		res.end();
 		connection.destroy();
