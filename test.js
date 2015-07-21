@@ -58,7 +58,7 @@ function register(){
 			}
 			oReqS.setRequestHeader("Content-type","text/plain");
 			oReqS.send(res.posts.id);
-		}else reject();
+		}else console.log("Failed to post pub key %d: %s", oReq.status, oReq.statusText);
 	};
 	
 
